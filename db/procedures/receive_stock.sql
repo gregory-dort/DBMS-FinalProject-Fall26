@@ -1,0 +1,27 @@
+-- OWNER: Teammate C (procedures)
+-- receive_stock(p_user_id, p_product_id, p_supplier_id, p_lot_number, p_quantity,
+--               p_unit_cost, p_expiration_date, p_warehouse_location)
+--   Roles: CLERK, MANAGER, ADMIN
+--   Creates a batch + a RECEIVE transaction. Returns the new batch_id (SELECT at the end).
+--
+-- Every procedure follows this pattern:
+--   DROP PROCEDURE IF EXISTS ...;
+--   DELIMITER $$
+--   CREATE PROCEDURE ...
+--   BEGIN
+--     DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+--     -- 1. check user is active and has an allowed role, else SIGNAL '45000' 'Forbidden: ...'
+--     START TRANSACTION;
+--     -- 2. validate + lock rows (SELECT ... FOR UPDATE)
+--     -- 3. write changes + INSERT INTO stock_transactions
+--     COMMIT;
+--   END$$
+--   DELIMITER ;
+--
+-- Error messages must start with a code the API maps to HTTP status:
+--   'Forbidden: ...'  → 403    'Not found: ...' → 404
+--   'Conflict: ...'   → 409    anything else from SIGNAL → 400
+--
+-- TODO: implement.
+
+USE grocery_inventory;

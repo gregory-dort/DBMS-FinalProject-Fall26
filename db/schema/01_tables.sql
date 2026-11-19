@@ -1,0 +1,23 @@
+-- OWNER: Teammate A (schema)
+-- Tables, keys and CHECK constraints. See docs/PROJECT_PLAN.md → "Data model".
+--
+-- TODO:
+--   categories          (category_id PK, name UNIQUE)
+--   suppliers           (supplier_id PK, name UNIQUE, ...)
+--   users               (user_id PK, username UNIQUE, full_name, role ENUM('CLERK','MANAGER','ADMIN'),
+--                        is_active, password_hash NULL  -- reserved for future real login)
+--   products            (product_id PK, name UNIQUE, category_id FK, unit_price, min_stock_level, is_active)
+--   product_suppliers   (product_id + supplier_id PK, status ENUM('Active','Backordered','Discontinued'),
+--                        reorder_quantity)
+--   inventory_batches   (batch_id PK, product_id FK, supplier_id FK, lot_number UNIQUE,
+--                        quantity_received, quantity_on_hand CHECK >= 0, unit_cost,
+--                        received_date, expiration_date, warehouse_location)
+--   stock_transactions  (transaction_id PK, batch_id FK, user_id FK,
+--                        type ENUM('RECEIVE','SALE','ADJUSTMENT','DISPOSAL'),
+--                        quantity_change CHECK <> 0, created_at, note)
+--   import_issues       (issue_id PK, batch_id FK NULL, issue_type, detail)
+--
+-- Do NOT add CHECK (expiration_date >= received_date): imported rows violate it.
+-- That rule is enforced for new rows by the trigger in 03_triggers.sql.
+
+USE grocery_inventory;

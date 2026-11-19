@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Image dataset (129 MB) — not used, never commit
+kaggle-data/

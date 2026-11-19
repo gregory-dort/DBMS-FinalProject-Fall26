@@ -1,0 +1,23 @@
+# Files run by `npm run db:reset`, top to bottom.
+# Paths are relative to db/. Lines starting with # are ignored.
+# A missing file is skipped with a warning (so the reset works while files are still TODO).
+
+schema/00_database.sql
+schema/01_tables.sql
+schema/02_views.sql
+seed/users.sql
+
+# --- Kaggle import ---
+import/01_staging_table.sql
+import/02_staging_data.sql
+import/03_flag_issues.sql
+import/04_normalize.sql
+
+# --- Created AFTER the import so they only apply to new data ---
+schema/03_triggers.sql
+
+# --- Stored procedures ---
+procedures/receive_stock.sql
+procedures/sell_product.sql
+procedures/adjust_stock.sql
+procedures/dispose_expired.sql
