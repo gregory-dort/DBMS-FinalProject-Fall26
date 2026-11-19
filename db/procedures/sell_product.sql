@@ -1,4 +1,4 @@
--- OWNER: Teammate C (procedures)
+-- OWNER: (Enter Name Here) (procedures)
 -- sell_product(p_user_id, p_product_id, p_quantity)
 --   Roles: CLERK, MANAGER, ADMIN
 --   Takes stock FEFO (first-expired, first-out) across batches, skipping expired ones.

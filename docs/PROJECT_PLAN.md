@@ -9,15 +9,6 @@ This document records **what we decided, why, and what's left to build**. If you
 
 ## 1. The system in one picture
 
-```
-┌──────────────────────┐  Axios + X-User-Id   ┌──────────────────────────┐  mysql2 (raw SQL)  ┌─────────────────────────┐
-│ client/              │ ───────────────────▶ │ server/                  │ ─────────────────▶ │ MySQL 8.4 (local)       │
-│ Vite · React · TS    │                      │ Express · TS · REST      │  CALL procedures   │ tables · views ·        │
-│ React Router         │ ◀─────────────────── │ routes → services →      │  SELECT views      │ triggers · stored       │
-│ shadcn/ui + Tailwind │         JSON         │ repositories             │                    │ procedures              │
-└──────────────────────┘                      └──────────────────────────┘                    └─────────────────────────┘
-```
-
 - **Reads** (lists, dashboards, reports) are `SELECT`s, mostly against **views**.
 - **Every stock change** (receive, sell, adjust, dispose) is a **stored procedure call**. The procedure checks the user's role, locks rows, updates stock, and writes the audit log, all in one transaction.
 
@@ -27,8 +18,8 @@ This document records **what we decided, why, and what's left to build**. If you
 
 ### 2.1 Database: MySQL installed locally by each person
 
-| Considered | Chosen | Why |
-| --- | --- | --- |
+| Considered                                                  | Chosen            | Why                                                     |
+| ----------------------------------------------------------- | ----------------- | ------------------------------------------------------- |
 | Docker per person · **local install** · one shared cloud DB | **Local install** | Nothing extra to install or pay for, and works offline. |
 
 Because everyone has their own copy, we use three rules to keep the four databases identical:
@@ -39,25 +30,25 @@ Because everyone has their own copy, we use three rules to keep the four databas
 
 ### 2.2 Data source: Kaggle "Grocery Inventory" CSV
 
-We first looked at an image-recognition dataset (`kaggle-data/GroceryStoreDataset`). It has photos but **no inventory data**, so we dropped it. It's git-ignored; don't commit it.
+We first looked at an image-recognition dataset (GroceryStoreDataset). It has product photos but **no inventory data**, so we dropped it.
 
 The CSV we use (~990 rows, 17 columns) turned out to be **one row per delivery (batch)**, not one per product. There are only ~95 distinct product names. That suits our design, because tracking separate batches per product is a core requirement.
 
-| CSV column(s) | Goes to | Notes |
-| --- | --- | --- |
-| `Catagory` (sic) | `categories` | 7 categories |
-| `Supplier_Name` | `suppliers` | **`Supplier_ID` is ignored:** the same supplier has a different random ID on every row |
-| `Product_Name`, `Unit_Price`, `Reorder_Level` | `products` | one row per distinct name; price and min stock are combined across rows |
-| `Status`, `Reorder_Quantity` | `product_suppliers` | they describe a supplier's deal for a product |
-| `Product_ID`, `Stock_Quantity`, `Date_Received`, `Expiration_Date`, `Warehouse_Location` | `inventory_batches` | one batch per CSV row; `Product_ID` becomes the lot number |
-| `Sales_Volume` | `stock_transactions` | generates a RECEIVE + SALE per batch, so the audit log matches stock on hand |
-| `Last_Order_Date`, `Inventory_Turnover_Rate`, `percentage` | *dropped* | meaningless or malformed (e.g. `089%`, `-161%`) |
-| *(not in CSV)* | `users` | hand-written demo users in `db/seed/users.sql` |
+| CSV column(s)                                                                            | Goes to              | Notes                                                                                  |
+| ---------------------------------------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| `Catagory` (sic)                                                                         | `categories`         | 7 categories                                                                           |
+| `Supplier_Name`                                                                          | `suppliers`          | **`Supplier_ID` is ignored:** the same supplier has a different random ID on every row |
+| `Product_Name`, `Unit_Price`, `Reorder_Level`                                            | `products`           | one row per distinct name; price and min stock are combined across rows                |
+| `Status`, `Reorder_Quantity`                                                             | `product_suppliers`  | they describe a supplier's deal for a product                                          |
+| `Product_ID`, `Stock_Quantity`, `Date_Received`, `Expiration_Date`, `Warehouse_Location` | `inventory_batches`  | one batch per CSV row; `Product_ID` becomes the lot number                             |
+| `Sales_Volume`                                                                           | `stock_transactions` | generates a RECEIVE + SALE per batch, so the audit log matches stock on hand           |
+| `Last_Order_Date`, `Inventory_Turnover_Rate`, `percentage`                               | _dropped_            | meaningless or malformed (e.g. `089%`, `-161%`)                                        |
+| _(not in CSV)_                                                                           | `users`              | hand-written demo users in `db/seed/users.sql`                                         |
 
 ### 2.3 Import pipeline: CSV → staging table → `INSERT … SELECT`
 
-| Considered | Chosen | Why |
-| --- | --- | --- |
+| Considered                                                                                         | Chosen                          | Why                                                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LOAD DATA LOCAL INFILE` · Node import script · Workbench wizard · **generated SQL + SQL cleanup** | **Generated SQL + SQL cleanup** | `LOAD DATA LOCAL` requires changing a MySQL setting on every machine, and the Workbench wizard can't be repeated reliably. Doing the cleanup in SQL also gives us plenty of SQL to discuss in the report. |
 
 1. `npm run db:csv` converts the CSV into plain `INSERT` statements for a `staging_inventory` table. The generated file is committed, so teammates only ever run `.sql` files.
@@ -70,50 +61,52 @@ The CSV we use (~990 rows, 17 columns) turned out to be **one row per delivery (
 
 **Dirty rows are flagged but kept as-is.** The data has known problems:
 
-| Issue type | Example |
-| --- | --- |
-| `EXPIRES_BEFORE_RECEIVED` | Coconut Sugar received 5/1/2024, expires 3/30/2024 (common) |
-| `MISSING_CATEGORY` | one Cabbage row with a blank category |
-| `CATEGORY_MISMATCH` | Greek Yogurt under "Fruits & Vegetables"; Cauliflower under "Grains & Pulses" |
-| `PRICE_OUTLIER` | Banana at $98.43 / $53.82; Cabbage at $66.55 (typical $1–5) |
+| Issue type                | Example                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `EXPIRES_BEFORE_RECEIVED` | Coconut Sugar received 5/1/2024, expires 3/30/2024 (common)                   |
+| `MISSING_CATEGORY`        | one Cabbage row with a blank category                                         |
+| `CATEGORY_MISMATCH`       | Greek Yogurt under "Fruits & Vegetables"; Cauliflower under "Grains & Pulses" |
+| `PRICE_OUTLIER`           | Banana at $98.43 / $53.82; Cabbage at $66.55 (typical $1–5)                   |
 
-Each problem becomes a row in an **`import_issues`** table (`batch_id`, `issue_type`, `detail`), shown on the app's *Data issues* page. Because imported rows break the rule "expiration ≥ received", that rule **can't be a `CHECK` constraint**. Instead, a **`BEFORE INSERT` trigger created after the import** enforces it on new rows only.
+Each problem becomes a row in an **`import_issues`** table (`batch_id`, `issue_type`, `detail`), shown on the app's _Data issues_ page. Because imported rows break the rule "expiration ≥ received", that rule **can't be a `CHECK` constraint**. Instead, a **`BEFORE INSERT` trigger created after the import** enforces it on new rows only.
 
 ### 2.5 Backend data access: raw SQL with `mysql2`
 
-| Considered | Chosen | Why |
-| --- | --- | --- |
+| Considered                                          | Chosen      | Why                                                                                                                                                      |
+| --------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Raw SQL** · query builder (Kysely) · ORM (Prisma) | **Raw SQL** | This is a database course: every join, view and transaction should be SQL we wrote and can explain. ORMs hide the SQL and fight our hand-written schema. |
 
 Rules:
+
 - Always use `?` placeholders, **never** string concatenation. This prevents SQL injection.
 - Alias columns to camelCase in the SQL (`category_id AS categoryId`).
 - SQL lives **only** in `server/src/repositories/`.
 
 ### 2.6 Business rules: stored procedures
 
-| Considered | Chosen | Why |
-| --- | --- | --- |
-| Hybrid (constraints + Node transactions) · **stored procedures** · Node only | **Stored procedures** | The rules are enforced *inside the database*, so even someone editing data in Workbench can't skip them. It's also the most database-centred design, which suits the course. |
+| Considered                                                                   | Chosen                | Why                                                                                                                                                                          |
+| ---------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hybrid (constraints + Node transactions) · **stored procedures** · Node only | **Stored procedures** | The rules are enforced _inside the database_, so even someone editing data in Workbench can't skip them. It's also the most database-centred design, which suits the course. |
 
-| Procedure | Who may call it | What it does |
-| --- | --- | --- |
-| `receive_stock` | Clerk, Manager, Admin | new batch + RECEIVE transaction |
-| `sell_product` | Clerk, Manager, Admin | takes stock **first-expired-first-out (FEFO)** across batches, skipping expired ones; one SALE row per batch |
-| `adjust_stock` | Manager, Admin | correct one batch (reason required); ADJUSTMENT row |
-| `dispose_expired` | Manager, Admin | zero out expired batches; DISPOSAL rows |
+| Procedure         | Who may call it       | What it does                                                                                                 |
+| ----------------- | --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `receive_stock`   | Clerk, Manager, Admin | new batch + RECEIVE transaction                                                                              |
+| `sell_product`    | Clerk, Manager, Admin | takes stock **first-expired-first-out (FEFO)** across batches, skipping expired ones; one SALE row per batch |
+| `adjust_stock`    | Manager, Admin        | correct one batch (reason required); ADJUSTMENT row                                                          |
+| `dispose_expired` | Manager, Admin        | zero out expired batches; DISPOSAL rows                                                                      |
 
 Conventions (every procedure follows these; template in [`db/procedures/receive_stock.sql`](../db/procedures/receive_stock.sql)):
+
 - `EXIT HANDLER FOR SQLEXCEPTION → ROLLBACK; RESIGNAL`, plus `START TRANSACTION … COMMIT`.
 - Lock rows with `SELECT … FOR UPDATE` before changing them, so two clerks can't sell the last unit twice.
 - Errors use `SIGNAL SQLSTATE '45000'`. The API turns the **message prefix** into an HTTP status:
 
   | Message starts with | HTTP |
-  | --- | --- |
-  | `Forbidden:` | 403 |
-  | `Not found:` | 404 |
-  | `Conflict:` | 409 |
-  | anything else | 400 |
+  | ------------------- | ---- |
+  | `Forbidden:`        | 403  |
+  | `Not found:`        | 404  |
+  | `Conflict:`         | 409  |
+  | anything else       | 400  |
 
 - Constraints stay as a safety net: `CHECK (quantity_on_hand >= 0)`, `CHECK (quantity_change <> 0)` and the foreign keys.
 - Reads don't use procedures; they're `SELECT`s and views.
@@ -130,12 +123,12 @@ For a complete example of all three layers, see `GET /api/categories`: [route](.
 
 ### 2.8 Frontend: Vite + React + TypeScript, shadcn/ui + Tailwind, Axios
 
-| Topic | Chosen | Why |
-| --- | --- | --- |
-| Build tool | Vite | Create React App is deprecated |
-| Routing | React Router | standard |
-| Components | **shadcn/ui + Tailwind** | Greg knows Tailwind; ready-made Table, Dialog, Form and Calendar components |
-| Data fetching | **Axios only** (TanStack Query considered and declined) | one less library to learn |
+| Topic         | Chosen                                                  | Why                                                                         |
+| ------------- | ------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Build tool    | Vite                                                    | Create React App is deprecated                                              |
+| Routing       | React Router                                            | standard                                                                    |
+| Components    | **shadcn/ui + Tailwind**                                | Greg knows Tailwind; ready-made Table, Dialog, Form and Calendar components |
+| Data fetching | **Axios only** (TanStack Query considered and declined) | one less library to learn                                                   |
 
 Since we're not using a data-fetching library, **every page loads data the same way**: the [`useApi`](../client/src/hooks/useApi.ts) hook returns `{ data, loading, error, reload }`. After a change like receiving stock, call `reload()` on any data the page shows. API errors carry the procedure's message: use `errorMessage(err)` from `api/http.ts` to display it.
 
@@ -143,28 +136,28 @@ Add shadcn components with `npx shadcn@latest add table dialog form calendar` (r
 
 ### 2.9 Authentication: demo user picker
 
-| Considered | Chosen | Why |
-| --- | --- | --- |
+| Considered                                           | Chosen               | Why                                                  |
+| ---------------------------------------------------- | -------------------- | ---------------------------------------------------- |
 | Session cookie + bcrypt · JWT · **demo user picker** | **Demo user picker** | fastest to build; the course focuses on the database |
 
 - A dropdown in the header chooses which user you are acting as. Axios sends that user's id as an `X-User-Id` header on every request.
-- Roles are enforced **twice**: Express `requireRole(...)` middleware, *and* inside each procedure through `p_user_id`.
+- Roles are enforced **twice**: Express `requireRole(...)` middleware, _and_ inside each procedure through `p_user_id`.
 - **Limitation (state this in the report):** there are no passwords, so anyone can pick "Admin". Real login is out of scope. `users.password_hash` (nullable) is reserved so it could be added later without a schema change.
 
-| Action | Clerk | Manager | Admin |
-| --- | :-: | :-: | :-: |
-| View products, stock, reports | ✓ | ✓ | ✓ |
-| Receive stock, record sales | ✓ | ✓ | ✓ |
-| Adjust / dispose stock | | ✓ | ✓ |
-| Add / edit products and suppliers | | ✓ | ✓ |
-| Manage users | | | ✓ |
+| Action                            | Clerk | Manager | Admin |
+| --------------------------------- | :---: | :-----: | :---: |
+| View products, stock, reports     |   ✓   |    ✓    |   ✓   |
+| Receive stock, record sales       |   ✓   |    ✓    |   ✓   |
+| Adjust / dispose stock            |       |    ✓    |   ✓   |
+| Add / edit products and suppliers |       |    ✓    |   ✓   |
+| Manage users                      |       |         |   ✓   |
 
 ### 2.10 Repository and team workflow
 
 - **One repository** with `db/`, `server/` and `client/`. A change that touches the database, API and UI goes in a single pull request.
 - **`main` is protected.** Work on short branches (`feat/sell-procedure`, `fix/low-stock-view`) and merge via a GitHub pull request with **1 approval from a teammate**.
 - Run `npm run typecheck` (and `npm run db:reset` if you touched `db/`) before opening a PR.
-- Never commit `server/.env` or `kaggle-data/`.
+- Never commit `server/.env`.
 
 ---
 
@@ -220,16 +213,17 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 
 ## 5. Work split
 
-| Who | Owns | Main files |
-| --- | --- | --- |
-| **Greg** | Express API + React/Tailwind frontend | `server/src/**`, `client/src/**` |
-| **Teammate A** | Schema: tables, constraints, views, trigger, demo users | `db/schema/*`, `db/seed/users.sql` |
+| Who            | Owns                                                              | Main files                                        |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------- |
+| **Greg**       | Express API + React/Tailwind frontend                             | `server/src/**`, `client/src/**`                  |
+| **Teammate A** | Schema: tables, constraints, views, trigger, demo users           | `db/schema/*`, `db/seed/users.sql`                |
 | **Teammate B** | Import: CSV conversion, date shift, issue flagging, normalization | `server/scripts/csv-to-staging.ts`, `db/import/*` |
-| **Teammate C** | Stored procedures and their tests | `db/procedures/*`, `db/tests/*` |
+| **Teammate C** | Stored procedures and their tests                                 | `db/procedures/*`, `db/tests/*`                   |
 
-*(Fill in names for A, B and C.)* Everyone contributes to the report and presentation.
+_(Fill in names for A, B and C.)_ Everyone contributes to the report and presentation.
 
 **Avoiding blockers:**
+
 - Everyone depends on the schema, so Teammate A merges `01_tables.sql` first.
 - **Procedure signatures and view columns are the API contract.** Agree on them in week 1 (section 6, phase 1), so Greg can code against them before they're implemented.
 - Until the API is ready, the frontend can have `useApi` return hard-coded sample data.
@@ -240,6 +234,7 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 ## 6. What needs to be done
 
 ### Phase 1: Contract (week 1, everyone)
+
 - [ ] Put the CSV in the repo as `db/data/grocery_inventory.csv`
 - [ ] Agree on table columns and types (draft in `db/schema/01_tables.sql` comments)
 - [ ] Agree on view names and columns (`v_product_stock`, `v_expiring_batches`, `v_dashboard_summary`)
@@ -249,6 +244,7 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 - [ ] Protect `main` on GitHub (require 1 approval)
 
 ### Phase 2: Database (Teammates A, B, C)
+
 - [ ] **A:** `01_tables.sql` with PKs, FKs, `CHECK`s, `UNIQUE`s and indexes on FK and filter columns
 - [ ] **A:** `seed/users.sql` (Admin, Managers, Clerks, one inactive user, `system_import`)
 - [ ] **A:** `02_views.sql`
@@ -262,6 +258,7 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 - [ ] **C:** `db/tests/test_procedures.sql`: happy path, wrong role, insufficient stock (prove the rollback worked), invalid ids
 
 ### Phase 3: API (Greg)
+
 - [ ] Response types in `server/src/types/api.ts` (and mirror them in `client/src/types.ts`)
 - [ ] Products: list (search / category / low stock / pagination), detail with batches + suppliers, create/edit
 - [ ] Inventory: receive / sell / adjust / dispose → `callProcedure`
@@ -269,6 +266,7 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 - [ ] Input checks on request bodies (e.g. quantity is a positive integer) before calling procedures
 
 ### Phase 4: Frontend (Greg)
+
 - [ ] Tailwind design tokens + shadcn components (`table`, `dialog`, `form`, `calendar`, `badge`, `card`)
 - [ ] Dashboard: stat cards, expiring soon, low stock, "dispose expired"
 - [ ] Products list + product detail (batches, suppliers, receive / sell / adjust actions)
@@ -276,6 +274,7 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 - [ ] Hide or disable actions the picked user's role can't perform; show procedure error messages
 
 ### Phase 5: Report and demo (everyone)
+
 - [ ] ER diagram and relational schema (with normalization discussion: why `product_suppliers` exists, why one CSV row becomes one batch)
 - [ ] Cleaning rules and `import_issues` statistics (before/after counts)
 - [ ] Stored procedures: FEFO logic, locking, transactions; show a test proving rollback works
@@ -287,25 +286,25 @@ Database setup and SQL-writing conventions are covered step by step in **[DATABA
 
 ## 7. Proposed API contract (to finalize in phase 1)
 
-| Method | Path | Role | Backed by |
-| --- | --- | --- | --- |
-| GET | `/api/health` | — | — |
-| GET | `/api/users` · `/api/users/me` | — | `users` |
-| GET | `/api/categories` | any | `categories` ✅ built |
-| GET | `/api/products?search=&categoryId=&lowStock=&page=` | any | `v_product_stock` |
-| GET | `/api/products/:id` | any | `v_product_stock` + `inventory_batches` + `product_suppliers` |
-| POST / PATCH | `/api/products` · `/api/products/:id` | Manager, Admin | `products` |
-| GET | `/api/suppliers` · `/api/suppliers/:id` | any | `suppliers`, `product_suppliers` |
-| POST / PATCH | `/api/suppliers` · `/api/suppliers/:id` | Manager, Admin | `suppliers` |
-| POST | `/api/inventory/receive` | Clerk+ | `CALL receive_stock` |
-| POST | `/api/inventory/sell` | Clerk+ | `CALL sell_product` |
-| POST | `/api/inventory/adjust` | Manager, Admin | `CALL adjust_stock` |
-| POST | `/api/inventory/dispose-expired` | Manager, Admin | `CALL dispose_expired` |
-| GET | `/api/transactions?productId=&type=&page=` | any | `stock_transactions` joins |
-| GET | `/api/reports/dashboard` | any | `v_dashboard_summary` |
-| GET | `/api/reports/expiring?days=7` | any | `v_expiring_batches` |
-| GET | `/api/reports/low-stock` | any | `v_product_stock` |
-| GET | `/api/reports/import-issues` | any | `import_issues` |
+| Method       | Path                                                | Role           | Backed by                                                     |
+| ------------ | --------------------------------------------------- | -------------- | ------------------------------------------------------------- |
+| GET          | `/api/health`                                       | —              | —                                                             |
+| GET          | `/api/users` · `/api/users/me`                      | —              | `users`                                                       |
+| GET          | `/api/categories`                                   | any            | `categories` ✅ built                                         |
+| GET          | `/api/products?search=&categoryId=&lowStock=&page=` | any            | `v_product_stock`                                             |
+| GET          | `/api/products/:id`                                 | any            | `v_product_stock` + `inventory_batches` + `product_suppliers` |
+| POST / PATCH | `/api/products` · `/api/products/:id`               | Manager, Admin | `products`                                                    |
+| GET          | `/api/suppliers` · `/api/suppliers/:id`             | any            | `suppliers`, `product_suppliers`                              |
+| POST / PATCH | `/api/suppliers` · `/api/suppliers/:id`             | Manager, Admin | `suppliers`                                                   |
+| POST         | `/api/inventory/receive`                            | Clerk+         | `CALL receive_stock`                                          |
+| POST         | `/api/inventory/sell`                               | Clerk+         | `CALL sell_product`                                           |
+| POST         | `/api/inventory/adjust`                             | Manager, Admin | `CALL adjust_stock`                                           |
+| POST         | `/api/inventory/dispose-expired`                    | Manager, Admin | `CALL dispose_expired`                                        |
+| GET          | `/api/transactions?productId=&type=&page=`          | any            | `stock_transactions` joins                                    |
+| GET          | `/api/reports/dashboard`                            | any            | `v_dashboard_summary`                                         |
+| GET          | `/api/reports/expiring?days=7`                      | any            | `v_expiring_batches`                                          |
+| GET          | `/api/reports/low-stock`                            | any            | `v_product_stock`                                             |
+| GET          | `/api/reports/import-issues`                        | any            | `import_issues`                                               |
 
 Errors always look like `{ "error": "message" }`.
 

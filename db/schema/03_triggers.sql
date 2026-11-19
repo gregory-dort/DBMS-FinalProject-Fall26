@@ -1,4 +1,4 @@
--- OWNER: Teammate A (schema)
+-- OWNER: (Enter Name Here) (schema)
 -- Created AFTER the import, so it only applies to rows added through the app.
 --
 -- TODO:

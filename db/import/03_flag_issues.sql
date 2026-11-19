@@ -1,4 +1,4 @@
--- OWNER: Teammate B (import)
+-- OWNER: (Enter Name Here) (import)
 -- Data cleaning step 1: convert types in staging and record problems. Rows are KEPT as-is.
 --
 -- TODO:

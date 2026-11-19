@@ -1,4 +1,4 @@
--- OWNER: Teammate B (import)
+-- OWNER: (Enter Name Here)(import)
 -- Raw landing table: one VARCHAR column per CSV column, no constraints.
 --
 -- TODO: CREATE TABLE staging_inventory (row_num INT PRIMARY KEY, product_name VARCHAR(100),

@@ -1,4 +1,4 @@
--- OWNER: Teammate C (procedures)
+-- OWNER: (Enter Name Here) (procedures)
 -- adjust_stock(p_user_id, p_batch_id, p_quantity_change, p_note)
 --   Roles: MANAGER, ADMIN
 --   Cycle-count corrections / damage. p_note is required. Result must stay >= 0

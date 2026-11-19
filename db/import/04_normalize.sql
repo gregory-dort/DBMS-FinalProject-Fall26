@@ -1,4 +1,4 @@
--- OWNER: Teammate B (import)
+-- OWNER: (Enter Name Here) (import)
 -- Data cleaning step 2: INSERT ... SELECT from staging into the real tables.
 --
 -- TODO (in this order):

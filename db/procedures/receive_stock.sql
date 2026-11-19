@@ -1,4 +1,4 @@
--- OWNER: Teammate C (procedures)
+-- OWNER: (Enter Name Here) (procedures)
 -- receive_stock(p_user_id, p_product_id, p_supplier_id, p_lot_number, p_quantity,
 --               p_unit_cost, p_expiration_date, p_warehouse_location)
 --   Roles: CLERK, MANAGER, ADMIN

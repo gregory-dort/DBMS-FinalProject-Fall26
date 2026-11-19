@@ -1,4 +1,4 @@
--- OWNER: Teammate A (schema)
+-- OWNER: (Enter Name Here) (schema)
 -- Read-side views used by the API. Their column names are part of the API contract.
 --
 -- TODO:

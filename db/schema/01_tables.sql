@@ -1,4 +1,4 @@
--- OWNER: Teammate A (schema)
+-- OWNER: (Enter Name Here) (schema)
 -- Tables, keys and CHECK constraints. See docs/PROJECT_PLAN.md → "Data model".
 --
 -- TODO:
